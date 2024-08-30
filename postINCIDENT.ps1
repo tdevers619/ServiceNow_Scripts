@@ -1,46 +1,79 @@
-# Import the ImportExcel module
-Import-Module ImportExcel
+# Step 1: Define the list of required modules
+$requiredModules = @("Az.Accounts", "Az.Automation", "Az.Storage")
 
-# Define your ServiceNow instance and credentials
-$instanceName = "your_instance_name"
-$username = "your_username"
-$password = "your_password"
+foreach ($module in $requiredModules) {
+    # Check if the module is available (either loaded or installable)
+    if (-not (Get-Module -ListAvailable -Name $module)) {
+        Write-Output "Module '$module' is not available. Attempting to install..."
 
-# Create the ServiceNow API URL for the incident table
-$apiUrl = "https://$instanceName.service-now.com/api/now/table/incident"
+        try {
+            # Attempt to install the module if not found
+            Install-Module -Name $module -Scope CurrentUser -Force -ErrorAction Stop
+            Write-Output "Module '$module' installed successfully."
+        } catch {
+            Write-Error "Failed to install module '$module'. Error: $_"
+            exit 1
+        }
+    }
 
-# Create the authentication header
+    # Import the module if it's not already imported
+    if (-not (Get-Module -Name $module)) {
+        try {
+            Import-Module -Name $module -ErrorAction Stop
+            Write-Output "Module '$module' imported successfully."
+        } catch {
+            Write-Error "Failed to import module '$module'. Error: $_"
+            exit 1
+        }
+    } else {
+        Write-Output "Module '$module' is already loaded."
+    }
+}
+
+# End of Module Checks --------------------------------------
+
+# Step 2: Get credentials from Azure Automation (only needed once)
+$creds = Get-AutomationPSCredential -Name "ServiceNowCredential"  # <---- Gets the Azure Automation Credentials
+
+# Step 3: Import the CSV data
+$csvFilePath = "C:\path\to\your\inactive_users.csv"  # Define the path to your CSV file
+$csvData = Import-Csv -Path $csvFilePath
+
+# Step 4: Aggregate the CSV data into a summary format
+$inactiveUsersSummary = $csvData | ForEach-Object {
+    "User: $($_.Username), Email: $($_.Email), Last Active: $($_.LastActiveDate)"
+} -join "`n"
+
+# Step 5: Define the ServiceNow instance and API details
+$instance = "your-instance"
+$tableName = "incident"  # Choose another table if needed
+$uri = "https://$instance.service-now.com/api/now/table/$tableName"
+
+# Step 6: Create the authentication header for ServiceNow
 $authInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(("$username:$password")))
 $headers = @{
     "Authorization" = "Basic $authInfo"
     "Content-Type" = "application/json"
+    "Accept" = "*/*"
+    "Connection" = "keep-alive"
 }
 
-# Path to your Excel file
-$excelFilePath = "C:\path\to\your\spreadsheet.xlsx"
+# Step 7: Prepare the JSON body for the request
+$body = @{
+    "short_description" = "List of Inactive Users Detected"
+    "description" = "The following users have been detected as inactive:`n`n$inactiveUsersSummary"
+    "urgency" = "3"  # Assuming this is a low urgency issue
+    "impact" = "3"   # Assuming this is a low impact issue
+} | ConvertTo-Json
 
-# Read the Excel file into a variable
-$data = Import-Excel -Path $excelFilePath
+# Step 8: Make the API call to ServiceNow to create the ticket
+try {
+    # Make the POST request to create a new ticket in ServiceNow
+    $response = Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body -Credential $creds
 
-# Loop through each row in the Excel file
-foreach ($row in $data) {
-    # Extract the necessary information from each row
-    $description = $row.Description # Adjust this to the correct column name in your Excel file
-    $shortDescription = $row.'Short Description' # Adjust as needed
-
-    # Define the payload for the new incident
-    $body = @{
-        short_description = $shortDescription
-        description = $description
-        urgency = "2" # Example urgency
-        impact = "2"   # Example impact
-    } | ConvertTo-Json
-
-    # Make the POST request to create the incident
-    try {
-        $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Post -Body $body
-        Write-Output "Incident created with number: $($response.result.number)"
-    } catch {
-        Write-Output "Error creating incident for row: $($row.Index). Error: $_"
-    }
+    # Log the result
+    Write-Output "Ticket created successfully. Ticket number: $($response.result.number)"
+} catch {
+    # Log the error
+    Write-Error "Failed to create the ticket. Error: $_"
 }
