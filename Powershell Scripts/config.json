@@ -1,0 +1,8 @@
+{
+    "ServiceNow": {
+        "Instance": "your_instance_name",
+        "Username": "your_username",
+        "Password": "your_password",
+        "Table": "incident"
+    }
+}
