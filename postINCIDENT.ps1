@@ -60,7 +60,7 @@ $headers = @{
 
 # Step 7: Prepare the JSON body for the request
 $body = @{
-    "short_description" = "List of Inactive Users Detected"
+    "short_description" = "Annual Account Check"
     "description" = "The following users have been detected as inactive:`n`n$inactiveUsersSummary"
     "urgency" = "3"  # Assuming this is a low urgency issue
     "impact" = "3"   # Assuming this is a low impact issue
@@ -77,3 +77,6 @@ try {
     # Log the error
     Write-Error "Failed to create the ticket. Error: $_"
 }
+
+
+# logic to not add a ticket if no resutls found! # 
