@@ -1,0 +1,27 @@
+# ServiceNow credentials and instance details
+$instance = "your_instance_name"
+$username = "your_username"
+$password = "your_password"
+$table = "incident"  # You can change this to 'task' or any other table
+
+# Create a credential object
+$securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+$credentials = New-Object System.Management.Automation.PSCredential ($username, $securePassword)
+
+# API endpoint
+$uri = "https://$instance.service-now.com/api/now/table/$table"
+
+# Incident data (adjust as per your requirements)
+$incidentData = @{
+    short_description = "PowerShell-created Incident"
+    description = "This incident was created via PowerShell script"
+    caller_id = "your_caller_sys_id"  # The sys_id of the user creating the incident
+    impact = "3"
+    urgency = "3"
+} | ConvertTo-Json
+
+# REST API request to create the incident
+$response = Invoke-RestMethod -Uri $uri -Method Post -Credential $credentials -Body $incidentData -ContentType "application/json"
+
+# Output response
+$response.result
